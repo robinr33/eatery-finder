@@ -1,98 +1,115 @@
-document.addEventListener('DOMContentLoaded', () => {
+let map;
+let infoWindow;
+const statusDiv = document.getElementById('status');
 
-    const statusDiv = document.getElementById('status');
-    const mapDiv = document.getElementById('map');
-    let map;
-
-    if (!navigator.geolocation) {
-        statusDiv.textContent = 'Geolocation is not supported by your browser.';
-        return;
+// This function is called by the Google Maps script when it has finished loading.
+function initMap() {
+    // 1. GET USER'S LOCATION
+    if (navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition(
+            (position) => {
+                const userLocation = {
+                    lat: position.coords.latitude,
+                    lng: position.coords.longitude,
+                };
+                statusDiv.textContent = 'Location found!';
+                createMap(userLocation);
+            },
+            () => {
+                // Handle location error (e.g., user denies permission)
+                statusDiv.textContent = 'Error: The Geolocation service failed. Please allow location access.';
+                // Default to a central location if user denies
+                createMap({ lat: 40.7128, lng: -74.0060 }); // New York City
+            }
+        );
+    } else {
+        // Browser doesn't support Geolocation
+        statusDiv.textContent = 'Error: Your browser doesn\'t support geolocation.';
+        createMap({ lat: 40.7128, lng: -74.0060 }); // New York City
     }
+}
 
-    navigator.geolocation.getCurrentPosition(success, error);
+// 2. CREATE THE MAP AND FIND PLACES
+function createMap(location) {
+    map = new google.maps.Map(document.getElementById("map"), {
+        center: location,
+        zoom: 15, // A good zoom level for city neighborhoods
+    });
 
-    function success(position) {
-        const latitude = position.coords.latitude;
-        const longitude = position.coords.longitude;
-        
-        statusDiv.textContent = 'Location found!';
-        initMap(latitude, longitude);
-    }
-
-    function error() {
-        statusDiv.textContent = 'Unable to retrieve your location. Please allow location access.';
-    }
-
-    function initMap(lat, lon) {
-        map = L.map('map').setView([lat, lon], 14);
-
-        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-            attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-        }).addTo(map);
-
-        L.marker([lat, lon]).addTo(map)
-            .bindPopup('<b>You are here</b>')
-            .openPopup();
-
-        L.circle([lat, lon], {
-            radius: 3000,
-            color: 'blue',
-            fillColor: '#3388ff',
-            fillOpacity: 0.1
-        }).addTo(map);
-
-        findEatingEstablishments(lat, lon);
-    }
-
-    async function findEatingEstablishments(lat, lon) {
-        statusDiv.textContent = 'Searching for eating establishments...';
-        
-        const eateryTypes = "restaurant|cafe|fast_food|bar|pub|food_court";
-        const radius = 3000; // 3km in meters
-
-        const overpassQuery = `
-            [out:json];
-            (
-              node["amenity"~"${eateryTypes}"](around:${radius},${lat},${lon});
-              way["amenity"~"${eateryTypes}"](around:${radius},${lat},${lon});
-              relation["amenity"~"${eateryTypes}"](around:${radius},${lat},${lon});
-            );
-            out center;
-        `;
-        
-        const overpassUrl = `https://overpass-api.de/api/interpreter?data=${encodeURIComponent(overpassQuery)}`;
-
-        try {
-            const response = await fetch(overpassUrl);
-            const data = await response.json();
-            
-            statusDiv.textContent = `Found ${data.elements.length} places.`;
-
-            data.elements.forEach(element => {
-                if (element.tags && element.tags.name) {
-                    let centerLat, centerLon;
-                    if (element.type === 'node') {
-                        centerLat = element.lat;
-                        centerLon = element.lon;
-                    } else if (element.center) {
-                        centerLat = element.center.lat;
-                        centerLon = element.center.lon;
-                    }
-
-                    if (centerLat && centerLon) {
-                        const marker = L.marker([centerLat, centerLon]).addTo(map);
-                        marker.bindPopup(`<b>${element.tags.name}</b><br>${element.tags.cuisine || ''}`);
-                    }
-                }
-            });
-
-            setTimeout(() => {
-                statusDiv.style.display = 'none';
-            }, 5000);
-
-        } catch (err) {
-            statusDiv.textContent = 'Could not fetch data for eating places.';
-            console.error(err);
+    // Create a marker for the user's location
+    new google.maps.Marker({
+        position: location,
+        map: map,
+        title: "You are here",
+        icon: { // Make the user's marker a bit different
+            path: google.maps.SymbolPath.CIRCLE,
+            scale: 7,
+            fillColor: "#4285F4",
+            fillOpacity: 1,
+            strokeWeight: 2,
+            strokeColor: "white",
         }
-    }
-});
+    });
+    
+    // Create a circle to show the 3km radius
+    new google.maps.Circle({
+        strokeColor: "#4285F4",
+        strokeOpacity: 0.8,
+        strokeWeight: 2,
+        fillColor: "#4285F4",
+        fillOpacity: 0.1,
+        map,
+        center: location,
+        radius: 3000, // 3km in meters
+    });
+
+    // 3. USE THE GOOGLE PLACES SERVICE TO FIND EATERIES
+    const request = {
+        location: location,
+        radius: '3000', // 3km radius
+        // You can be more specific here, e.g., type: ['restaurant']
+        keyword: 'eating establishment food restaurant cafe bar' 
+    };
+
+    statusDiv.textContent = 'Searching for nearby eateries...';
+    const service = new google.maps.places.PlacesService(map);
+    service.nearbySearch(request, (results, status) => {
+        if (status === google.maps.places.PlacesServiceStatus.OK && results) {
+            statusDiv.textContent = `Found ${results.length} places!`;
+            for (let i = 0; i < results.length; i++) {
+                createMarker(results[i]);
+            }
+        } else {
+            statusDiv.textContent = 'Could not find any places nearby.';
+        }
+
+        // Hide the status message after a few seconds
+        setTimeout(() => {
+            statusDiv.style.display = 'none';
+        }, 5000);
+    });
+}
+
+// 4. CREATE A MARKER FOR EACH PLACE FOUND
+function createMarker(place) {
+    if (!place.geometry || !place.geometry.location) return;
+
+    const marker = new google.maps.Marker({
+        map,
+        position: place.geometry.location,
+    });
+
+    // Create an InfoWindow to show details when a marker is clicked
+    infoWindow = new google.maps.InfoWindow();
+    google.maps.event.addListener(marker, "click", () => {
+        const content = `
+            <div>
+                <strong>${place.name}</strong><br>
+                ${place.vicinity}<br>
+                Rating: ${place.rating || 'N/A'} (${place.user_ratings_total || 0} reviews)
+            </div>
+        `;
+        infoWindow.setContent(content);
+        infoWindow.open(map, marker);
+    });
+}
