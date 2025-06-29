@@ -3,6 +3,7 @@ let infoWindow;
 const placedMarkerIds = new Set();
 const statusDiv = document.getElementById('status');
 
+// This is the main function called by the Google Maps script tag
 function initMap() {
     if (navigator.geolocation) {
         navigator.geolocation.getCurrentPosition(
@@ -26,7 +27,8 @@ function handleLocationError(errorMessage) {
     createMap({ lat: 40.7128, lng: -74.0060 });
 }
 
-function createMap(location) {
+// The main map creation and search initiation function is now "async"
+async function createMap(location) {
     map = new google.maps.Map(document.getElementById("map"), {
         center: location,
         zoom: 15,
@@ -34,6 +36,7 @@ function createMap(location) {
 
     infoWindow = new google.maps.InfoWindow();
 
+    // User location marker
     new google.maps.Marker({
         position: location,
         map: map,
@@ -48,6 +51,7 @@ function createMap(location) {
         }
     });
     
+    // Radius circle
     new google.maps.Circle({
         strokeColor: "#4285F4",
         strokeOpacity: 0.8,
@@ -59,54 +63,67 @@ function createMap(location) {
         radius: 3000,
     });
 
-    findNearbyEateries(location);
+    // *** NEW SEQUENTIAL SEARCH LOGIC ***
+    statusDiv.textContent = 'Searching for nearby eateries...';
+    const eateryTypes = ['restaurant', 'cafe', 'bar', 'bakery', 'food'];
+    const service = new google.maps.places.PlacesService(map);
+
+    // This loop waits for each search to complete before starting the next
+    for (const type of eateryTypes) {
+        statusDiv.textContent = `Searching for type: ${type}...`;
+        await searchForType(location, type, service);
+    }
+
+    statusDiv.textContent = `Search complete! Found ${placedMarkerIds.size} total places.`;
+    setTimeout(() => {
+        statusDiv.style.display = 'none';
+    }, 5000);
 }
 
-function findNearbyEateries(location) {
-    statusDiv.textContent = 'Searching for nearby eateries...';
-    
-    const eateryTypes = ['restaurant', 'cafe', 'bar', 'bakery'];
-    const service = new google.maps.places.PlacesService(map);
-    
-    eateryTypes.forEach(type => {
-        service.nearbySearch({
+// This new function performs a search for ONE type and handles its pagination
+// It returns a "Promise", which means the `await` keyword will wait for it to finish
+function searchForType(location, type, service) {
+    return new Promise((resolve) => {
+        const request = {
             location: location,
             radius: '3000',
             type: [type]
-        }, (results, status, pagination) => {
-            // This function handles the results from a search
-            processPlaces(results, status);
-            
-            // *** THIS IS THE NEW PAGINATION LOGIC ***
-            // If there is a next page, wait 2 seconds and fetch it.
-            // We wait to avoid hitting the API too quickly.
-            if (pagination && pagination.hasNextPage) {
-                setTimeout(() => {
-                    pagination.nextPage(); // This will call the same callback function again
-                }, 2000);
+        };
+
+        service.nearbySearch(request, (results, status, pagination) => {
+            if (status === google.maps.places.PlacesServiceStatus.OK && results) {
+                processPlaces(results);
+
+                if (pagination && pagination.hasNextPage) {
+                    // Wait 2 seconds before fetching the next page, as required by the API
+                    setTimeout(() => pagination.nextPage(), 2000);
+                } else {
+                    // If no more pages, this search type is done, so we resolve the promise
+                    resolve();
+                }
+            } else {
+                // If there's an error or no results, we are also done with this type
+                if (status !== google.maps.places.PlacesServiceStatus.ZERO_RESULTS) {
+                    console.error(`Places API error for type "${type}": ${status}`);
+                }
+                resolve();
             }
         });
     });
-
-    // Hide the status message after all searches are likely complete
-    setTimeout(() => {
-        statusDiv.style.display = 'none';
-    }, 10000); // Increased timeout to allow for pagination
 }
 
-// NEW: A dedicated function to process search results
-function processPlaces(results, status) {
-    if (status === google.maps.places.PlacesServiceStatus.OK && results) {
-        results.forEach(place => {
-            if (!placedMarkerIds.has(place.place_id)) {
-                placedMarkerIds.add(place.place_id);
-                createMarker(place);
-            }
-        });
-        statusDiv.textContent = `Found ${placedMarkerIds.size} unique places...`;
-    }
+// This helper function adds markers to the map
+function processPlaces(results) {
+    results.forEach(place => {
+        if (!placedMarkerIds.has(place.place_id)) {
+            placedMarkerIds.add(place.place_id);
+            createMarker(place);
+        }
+    });
+    console.log(`Total unique places found so far: ${placedMarkerIds.size}`);
 }
 
+// This function creates a single marker and its click listener
 function createMarker(place) {
     if (!place.geometry || !place.geometry.location) return;
 
