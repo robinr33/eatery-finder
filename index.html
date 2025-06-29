@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Nearby Eateries Finder</title>
+    
+    <!-- ADD THIS: Link to the manifest file -->
+    <link rel="manifest" href="manifest.json">
+
+    <!-- ADD THIS: Theme color for the browser address bar on Android -->
+    <meta name="theme-color" content="#3388ff"/>
+    
+    <!-- Leaflet CSS for the map styling -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+     integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
+     crossorigin=""/>
+     
+    <!-- Our custom stylesheet -->
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+    <div id="map"></div>
+    <div id="status">Getting your location...</div>
+
+    <!-- Leaflet JavaScript Library -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+     integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
+     crossorigin=""></script>
+     
+    <!-- Our custom JavaScript -->
+    <script src="script.js"></script>
+
+    <!-- ADD THIS SCRIPT BLOCK AT THE END -->
+    <!-- This script registers the service worker -->
+    <script>
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('/sw.js').then(registration => {
+                    console.log('ServiceWorker registration successful');
+                }).catch(err => {
+                    console.log('ServiceWorker registration failed: ', err);
+                });
+            });
+        }
+    </script>
+</body>
+</html>

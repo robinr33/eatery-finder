@@ -1,0 +1,16 @@
+{
+  "name": "Nearby Eateries Finder",
+  "short_name": "Eateries",
+  "start_url": ".",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#3388ff",
+  "description": "A simple app to find eating establishments near you.",
+  "icons": [
+    {
+      "src": "icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    }
+  ]
+}
