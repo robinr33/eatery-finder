@@ -1,9 +1,8 @@
 let map;
-let infoWindow; // Create ONE infoWindow to be reused for all markers
-const placedMarkerIds = new Set(); // Use a Set to track placed markers and avoid duplicates
+let infoWindow;
+const placedMarkerIds = new Set();
 const statusDiv = document.getElementById('status');
 
-// This function is called by the Google Maps script when it's ready.
 function initMap() {
     if (navigator.geolocation) {
         navigator.geolocation.getCurrentPosition(
@@ -15,9 +14,7 @@ function initMap() {
                 statusDiv.textContent = 'Location found!';
                 createMap(userLocation);
             },
-            () => {
-                handleLocationError('Error: The Geolocation service failed.');
-            }
+            () => handleLocationError('Error: The Geolocation service failed.')
         );
     } else {
         handleLocationError("Error: Your browser doesn't support geolocation.");
@@ -33,13 +30,10 @@ function createMap(location) {
     map = new google.maps.Map(document.getElementById("map"), {
         center: location,
         zoom: 15,
-        mapId: 'eatery-finder-map' // Optional: For custom styling in the future
     });
 
-    // Initialize the single InfoWindow object.
     infoWindow = new google.maps.InfoWindow();
 
-    // Create a custom marker for the user's location.
     new google.maps.Marker({
         position: location,
         map: map,
@@ -54,7 +48,6 @@ function createMap(location) {
         }
     });
     
-    // Create the 3km radius circle.
     new google.maps.Circle({
         strokeColor: "#4285F4",
         strokeOpacity: 0.8,
@@ -66,50 +59,54 @@ function createMap(location) {
         radius: 3000,
     });
 
-    // *** NEW LOGIC: Search for multiple types of eateries ***
     findNearbyEateries(location);
 }
 
-// NEW: This function runs multiple searches, one for each type.
 function findNearbyEateries(location) {
     statusDiv.textContent = 'Searching for nearby eateries...';
     
-    // Define the types we want to search for.
     const eateryTypes = ['restaurant', 'cafe', 'bar', 'bakery'];
     const service = new google.maps.places.PlacesService(map);
     
-    // Loop through each type and perform a separate search.
     eateryTypes.forEach(type => {
-        const request = {
+        service.nearbySearch({
             location: location,
             radius: '3000',
-            type: [type] // Use the 'type' parameter for better results
-        };
-
-        service.nearbySearch(request, (results, status) => {
-            if (status === google.maps.places.PlacesServiceStatus.OK && results) {
-                // Process the results from this specific search
-                results.forEach(place => {
-                    // Check if we've already added this place (to avoid duplicates)
-                    if (!placedMarkerIds.has(place.place_id)) {
-                        placedMarkerIds.add(place.place_id); // Add its unique ID to our Set
-                        createMarker(place); // Create the marker
-                    }
-                });
+            type: [type]
+        }, (results, status, pagination) => {
+            // This function handles the results from a search
+            processPlaces(results, status);
+            
+            // *** THIS IS THE NEW PAGINATION LOGIC ***
+            // If there is a next page, wait 2 seconds and fetch it.
+            // We wait to avoid hitting the API too quickly.
+            if (pagination && pagination.hasNextPage) {
+                setTimeout(() => {
+                    pagination.nextPage(); // This will call the same callback function again
+                }, 2000);
             }
-            // Update the status with the total number of unique places found so far
-            statusDiv.textContent = `Found ${placedMarkerIds.size} unique places.`;
         });
     });
 
-    // Hide the status message after all searches are likely complete.
+    // Hide the status message after all searches are likely complete
     setTimeout(() => {
         statusDiv.style.display = 'none';
-    }, 7000); // Increased timeout to allow for multiple API calls
+    }, 10000); // Increased timeout to allow for pagination
 }
 
+// NEW: A dedicated function to process search results
+function processPlaces(results, status) {
+    if (status === google.maps.places.PlacesServiceStatus.OK && results) {
+        results.forEach(place => {
+            if (!placedMarkerIds.has(place.place_id)) {
+                placedMarkerIds.add(place.place_id);
+                createMarker(place);
+            }
+        });
+        statusDiv.textContent = `Found ${placedMarkerIds.size} unique places...`;
+    }
+}
 
-// FIXED: This function now correctly uses the single infoWindow.
 function createMarker(place) {
     if (!place.geometry || !place.geometry.location) return;
 
@@ -117,12 +114,10 @@ function createMarker(place) {
         map,
         position: place.geometry.location,
         title: place.name,
-        animation: google.maps.Animation.DROP // Add a nice drop animation
+        animation: google.maps.Animation.DROP
     });
 
-    // Add a click listener to EACH marker.
     google.maps.event.addListener(marker, "click", () => {
-        // When clicked, set the content for our single infoWindow
         const content = `
             <div>
                 <strong>${place.name}</strong><br>
